@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,13 +13,14 @@ struct cmd {
   int argc;
 };
 
-struct cmd *parse_cmd(char *line, int len);
-static void init_cmd(struct cmd *cmd);
+static void cmd_free(struct cmd *cmd);
+static struct cmd *cmd_new(void);
+static struct cmd *parse_cmd(char *line, int len);
 
 int main() {
   while (1) {
     char line[BUFFER_SIZE];
-    struct cmd *command;
+    struct cmd *cmd;
     char *result;
     pid_t pid;
 
@@ -27,57 +29,63 @@ int main() {
     if (result == NULL) {
       fprintf(stderr, "fgets error");
     }
-    command = parse_cmd(line, strlen(line));
+    cmd = parse_cmd(line, strlen(line));
 
     pid = fork();
     if (pid < 0) {
       fprintf(stderr, "failed fork");
     } else if (pid == 0) {
       int result;
-      result = execvp(command->argv[0], command->argv);
+      result = execvp(cmd->argv[0], cmd->argv);
       if (result == -1) {
-        perror(command->argv[0]);
+        /*perror(cmd->argv[0]);*/
         exit(99);
       }
     } else {
       int status;
       waitpid(pid, &status, 0);
     }
+
+    cmd_free(cmd);
   }
 
   exit(0);
 }
 
-struct cmd *parse_cmd(char *line, int len) {
-  struct cmd *command = calloc(1, sizeof(struct cmd));
+static struct cmd *parse_cmd(char *line, int len) {
+  struct cmd *cmd = cmd_new();
   char *p = line;
 
-  init_cmd(command);
-
   while (p < line + len) {
-    if (*p == ' ' || *p == '\n') {
+    while (p < line + len && isspace(*p)) {
       *p = '\0';
-    } else {
-      char *next = p + 1;
-
-      command->argv[command->argc] = p;
-      command->argc++;
-
-      while (*next != ' ' && *next != '\n') {
-        ++p;
-        next = p + 1;
-      }
+      ++p;
     }
 
-    ++p;
+    if (p < line + len) {
+      cmd->argv[cmd->argc] = p;
+      cmd->argc++;
+    }
+
+    while (p < line + len && !isspace(*p)) {
+      ++p;
+    }
   }
 
-  return command;
+  return cmd;
 }
 
-static void init_cmd(struct cmd *cmd) {
+static struct cmd *cmd_new() {
+  struct cmd *cmd = calloc(1, sizeof(struct cmd));
   cmd->argv = calloc(10, sizeof(char *));
   cmd->argc = 0;
+
+  return cmd;
+}
+
+static void cmd_free(struct cmd *cmd) {
+  free(cmd->argv);
+  free(cmd);
 
   return;
 }
